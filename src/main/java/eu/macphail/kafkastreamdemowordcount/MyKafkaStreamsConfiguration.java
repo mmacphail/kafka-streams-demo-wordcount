@@ -38,18 +38,13 @@ public class MyKafkaStreamsConfiguration {
     public StreamsBuilderFactoryBeanCustomizer customizer() {
         return fb -> fb.setStateListener((newState, oldState) -> {
             StreamsBuilderFactoryBean factory = context.getBean(StreamsBuilderFactoryBean.class);
-            log.info("Factory: " + factory);
             KafkaStreams streams = factory.getKafkaStreams();
-            log.info("Streams: " + streams);
-            log.info("State transition from " + oldState + " to " + newState);
             if(newState == KafkaStreams.State.RUNNING) {
-                ReadOnlyKeyValueStore<String, Long> store = streams.store("CountsKeyValueStore", QueryableStoreTypes.<String, Long>keyValueStore());
-                log.info("Store: " + store);
+                ReadOnlyKeyValueStore<String, Long> store = streams.store("CountsKeyValueStore", QueryableStoreTypes.keyValueStore());
 
                 ConfigurableApplicationContext configurableApplicationContext = (ConfigurableApplicationContext) context;
                 DefaultListableBeanFactory beanFactory = (DefaultListableBeanFactory) configurableApplicationContext.getBeanFactory();
                 beanFactory.registerSingleton("CountsKeyValueStore", store);
-                log.info("Store is registered");
 
                 WordCountResource wordCountResource = (WordCountResource) context.getBean("wordCountResource");
                 wordCountResource.setKeyValueStore(store);
@@ -57,25 +52,8 @@ public class MyKafkaStreamsConfiguration {
         });
     }
 
-    /*@Bean
-    KStream<String, String> wordCountStream(StreamsBuilder builder) {
-        final Serde<String> stringSerde = Serdes.String();
-        final Serde<Long> longSerde = Serdes.Long();
-
-        KStream<String, String> textLines = builder.stream("streams-plaintext-input", Consumed.with(stringSerde, stringSerde));
-
-        KTable<String, Long> wordCounts = textLines
-                .flatMapValues(value -> Arrays.asList(value.toLowerCase().split("\\W+")))
-                .groupBy((key, value) -> value)
-                .count();
-
-        wordCounts.toStream().to("streams-wordcount-output", Produced.with(stringSerde, longSerde));
-
-        return textLines;
-    }*/
-
     @Bean
-    KStream<String, String> wordCountKTableStream(StreamsBuilder builder) {
+    KStream<String, String> wordCountStream(StreamsBuilder builder) {
         final Serde<String> stringSerde = Serdes.String();
         final Serde<Long> longSerde = Serdes.Long();
 
@@ -86,7 +64,9 @@ public class MyKafkaStreamsConfiguration {
                 .groupBy((key, value) -> value, Grouped.with(stringSerde, stringSerde));
 
         groupedByWord
-                .count(Materialized.<String, Long, KeyValueStore<Bytes, byte[]>>as("CountsKeyValueStore"));
+                .count(Materialized.as("CountsKeyValueStore"))
+                .toStream()
+                .to("streams-wordcount-output", Produced.with(stringSerde, longSerde));
 
         return textLines;
     }
